@@ -5,7 +5,7 @@ Fit penalized regression models with overlapping grouped variables
 }
 
 \description{
-Fit the regularization paths of linear, logistic or poisson models with 
+Fit the regularization paths of linear, logistic, Poisson or Cox models with 
 overlapping grouped covariates based on the latent group lasso approach 
 (Jacob et al., 2009; Obozinski et al., 2011). Latent group MCP/SCAD as well as 
 bi-level selection methods, namely the group exponential lasso (Breheny, 2015) 
@@ -15,11 +15,11 @@ and the composite MCP (Huang et al., 2012) are also available.
 \usage{
 grpregOverlap(X, y, group, 
     penalty=c("grLasso", "grMCP", "grSCAD", "gel", "cMCP", "gLasso", "gMCP"), 
-    family=c("gaussian","binomial", "poisson"), nlambda=100, lambda, 
+    family=c("gaussian","binomial", "poisson", "cox"), nlambda=100, lambda, 
     lambda.min={if (nrow(X) > ncol(X)) 1e-4 else .05}, alpha=1, eps=.001, 
-    max.iter=1000, dfmax=ncol(X), gmax=length(group), gamma=3, tau=1/3, 
-    group.multiplier={if (strtrim(penalty,2)=="gr")  sqrt(sapply(group, length)) 
-                         else rep(1, length(group))}, 
+    max.iter=1000, dfmax=ncol(X), gmax=length(group), 
+    gamma=ifelse(penalty == "grSCAD", 4, 3), tau=1/3, 
+    group.multiplier, 
     returnX = FALSE, returnOverlap = FALSE,
     warn=TRUE, ...) 
 }
@@ -30,8 +30,11 @@ grpregOverlap(X, y, group,
   \code{grpreg}, which standardizes the data and includes an intercept by default.
   }
   \item{y}{
-  The response vector, or a matrix in the case of multitask learning. See 
-  \code{\link[grpreg]{grpreg}} for more details.
+  The response vector, or a matrix in the case of multitask learning. For survival analysis, \code{y} is the time-to-event outcome - a two-column matrix or
+    \code{\link[survival]{Surv}} object.  The first column is the
+    time on study (follow up time); the second column is a binary
+    variable with 1 indicating that the event has occurred and 0
+    indicating (right) censoring. See \code{\link[grpreg]{grpreg}} and  \code{\link[grpreg]{grpsurv}} for more details.
   }
   \item{group}{
   Different from that in \code{grpreg}, \code{group} here must be a list of vectors,
@@ -45,8 +48,8 @@ grpregOverlap(X, y, group,
   variables in those groups. See \code{\link[grpreg]{grpreg}} for more details.
   }
   \item{family}{
-  Either "gaussian", "binomial", or 'poisson', depending on the response. If 
-  \code{family} is missing, it is set to be 'gaussian'.
+  Either "gaussian", "binomial", or 'cox', depending on the response. If 
+  \code{family} is missing, it is set to be 'gaussian'. Specify \code{family} = 'cox' for survival analysis (Cox models).
   }
   \item{nlambda}{
   The number of \code{lambda} values. Default is 100.
@@ -68,7 +71,8 @@ grpregOverlap(X, y, group,
   of the group penalty is \code{lambda*alpha}, while that of the ridge penalty is
   \code{lambda*(1-alpha)}. Default is 1: no L2 penalty.
   }
-  \item{eps}{Convergence threshhold.  The algorithm iterates until the change (on the standardized scale) in any coefficient is less than \code{eps}. Default is \code{.001}.
+  \item{eps}{Convergence threshhold.  The algorithm iterates until the change (on 
+  the standardized scale) in any coefficient is less than \code{eps}. Default is \code{.001}.
   }
   \item{max.iter}{
   The maximum number of iterations. Default is 1000. See \code{\link[grpreg]{grpreg}} 
@@ -93,9 +97,10 @@ grpregOverlap(X, y, group,
   \item{group.multiplier}{
   A vector of values representing multiplicative factors by which each group's 
   penalty is to be multiplied. Often, this is a function (such as the square root) 
-  of the number of predictors in each group. The default is to use the square root 
-  of group size for the group selection methods, and a vector of 1's (i.e., no 
-  adjustment for group size) for bi-level selection.
+  of the number of predictors in each group. If this is not specified by the user,
+  the internal code will, by default, use the square root of group size for the 
+  group selection methods, and a vector of 1's (i.e., no adjustment for group size) 
+  for bi-level selection.
   }
   \item{returnX}{
   Return the new expanded design matrix? Default is FALSE. Note the storage size 
@@ -137,7 +142,7 @@ For more detailed explanation for the penalties and algorithm, see \code{\link[g
 }
 
 \value{
-An object with S3 class \code{"grpregOverlap"}, which inherits \code{"grpreg"}, 
+An object with S3 class \code{"grpregOverlap"} or \code{"grpsurvOverlap"} (for Cox models), which inherits \code{"grpreg"}, 
 with following variables.
   \item{beta}{
   The fitted matrix of coefficients. The number of rows is equal to the number 
@@ -151,8 +156,7 @@ with following variables.
   \item{alpha}{Same as above.}
   \item{loss}{
   A vector containing either the residual sum of squares (\code{"gaussian"}) or 
-  negative log-likelihood (\code{"binomial"}) of the fitted model at each value 
-  of \code{lambda}.}
+  negative log-likelihood (\code{"binomial"}) or negative partial log-likelihood (\code{"cox"}) of the fitted model at each value of \code{lambda}.}
   \item{n}{Number of observations.}
   \item{penalty}{Same as above.}
   \item{df}{
@@ -189,6 +193,10 @@ with following variables.
   variables are reordered according to the order of groups. Only returned if
   \code{returnX} is TRUE.
   }
+  \item{W}{Matrix of \code{exp(beta)} values for each subject over all
+    \code{lambda} values. (For Cox models only)}
+  \item{time}{Times on study. (For Cox models only)}
+  \item{fail}{Failure event indicator. (For Cox models only)}
 }
 \references{
   \itemize{
@@ -198,7 +206,7 @@ with following variables.
     \item Huang J., Breheny, P. and Ma, S. (2012). A selective review of group selection in high dimensional models. \emph{Statistical Science}, \strong{27}: 481-499. \url{http://myweb.uiowa.edu/pbreheny/publications/Huang2012.pdf}
     \item Breheny P and Huang J (2015). Group descent algorithms for nonconvex penalized linear and logistic regression models with grouped predictors. \emph{Statistics and Computing}, \strong{25}: 173-187.\url{http://myweb.uiowa.edu/pbreheny/publications/group-computing.pdf}
     \item Breheny P and Huang J (2009). Penalized methods for bi-level variable selection. \emph{Statistics and Its Interface}, \strong{2}: 369-380. \url{http://myweb.uiowa.edu/pbreheny/publications/Breheny2009.pdf}
-    \item Breheny P (2014). R package 'grpreg'. \url{http://cran.r-project.org/web/packages/grpreg/grpreg.pdf}
+    \item Breheny P (2014). R package 'grpreg'. \url{https://CRAN.R-project.org/package=grpreg/grpreg.pdf}
   }
 }
 
@@ -209,8 +217,8 @@ with following variables.
 }
 
 \seealso{
-\code{\link{cv.grpregOverlap}}, \code{\link[=plot.grpregOverlap]{plot}}, 
-\code{\link[=select.grpregOverlap]{select}}, and \code{\link[grpreg]{grpreg}}.
+\code{\link{cv.grpregOverlap}}, \code{\link{cv.grpsurvOverlap}}, \code{\link[=plot.grpregOverlap]{plot}}, 
+\code{\link[=select.grpregOverlap]{select}}, \code{\link[grpreg]{grpreg}}, \code{\link[grpreg]{grpsurv}}.
 }
 
 \examples{
@@ -227,14 +235,14 @@ y <- X.latent \%*\% beta.latent.T + rnorm(100)
 fit <- grpregOverlap(X, y, group, penalty = 'grLasso')
 # fit <- grpregOverlap(X, y, group, penalty = 'grMCP')
 # fit <- grpregOverlap(X, y, group, penalty = 'grSCAD')
-coef(fit, latent = TRUE) # compare to beta.latent.T
+head(coef(fit, latent = TRUE)) # compare to beta.latent.T
 plot(fit, latent = TRUE) 
-coef(fit, latent = FALSE) # compare to beta.T
+head(coef(fit, latent = FALSE)) # compare to beta.T
 plot(fit, latent = FALSE)
 
 cvfit <- cv.grpregOverlap(X, y, group, penalty = 'grMCP')
 plot(cvfit)
-coef(cvfit)
+head(coef(cvfit))
 summary(cvfit)
 
 ## logistic regression, real data, pathway selection
@@ -244,8 +252,8 @@ group <- pathway.dat$pathways
 y <- pathway.dat$mutation
 fit <- grpregOverlap(X, y, group, penalty = 'grLasso', family = 'binomial')
 plot(fit)
-select(fit)
-select(fit,criterion="AIC",df="active")
+str(select(fit))
+str(select(fit,criterion="AIC",df="active"))
 
 \dontrun{
 cvfit <- cv.grpregOverlap(X, y, group, penalty = 'grLasso', family = 'binomial')
